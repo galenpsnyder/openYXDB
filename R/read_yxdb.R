@@ -7,8 +7,8 @@
 #' @examples
 #' read_yxdb()
 
-read_yxdb <- function(path) {
-  yxdb <- get_header_and_field_info(path, verbosity = 0)
+read_yxdb <- function(path, verbosity = 0) {
+  yxdb <- get_header_and_field_info(path)
 
   d_mat <- matrix(
     nrow = yxdb$total_records,
