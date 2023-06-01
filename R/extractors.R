@@ -1,6 +1,12 @@
 #' Format observation read from .yxdb Connection.
 #'
 #' Internal functions to convert raw data to various data types.
+#'
+#' R has native support for bool, byte, int32, double, character, and date only.
+#' However, .yxdb files may contain a variety of additional field types. These
+#' extractor functions are a brute force solution to coerce non-native data
+#' types to something usable by R. In some cases (e.g., int64), data conversion
+#' will occur by necessity.
 
 bool_extractor <- function(start, field_len, buffer) {
   value <- buffer[start+1]
@@ -17,7 +23,8 @@ byte_extractor <- function(start, field_len, buffer) {
 
 int16_extractor <- function(start, field_len, buffer) {
   if(buffer[start+3] == 1) return(NA)
-  return(packBits(rawToBits(buffer[(start+1):(start+2)]), 'integer'))
+  int <- as.integer(rawToBits(buffer[(start+1):(start+2)]))
+  return(as.integer(sum((int[1:16] - int[16]) * 2^(0:15)) - int[16]))
 }
 
 
@@ -29,20 +36,28 @@ int32_extractor <- function(start, field_len, buffer) {
 
 int64_extractor <- function(start, field_len, buffer) {
   if(buffer[start+9] == 1) return(NA)
-  return(packBits(rawToBits(buffer[(start+1):(start+8)]), 'integer'))
+  int <- as.integer(rawToBits(buffer[(start+1):(start+8)]))
+  return(sum((int[1:64] - int[64]) * 2^(0:63)) - int[64])
 }
 
 
 fixed_decimal_extractor <- function(start, field_len, buffer) {
   if(buffer[start+field_len+1] == 1) return(NA)
-  value = get_string(buffer, start, field_len, 1) # DEFINE THIS FUNCTION
+  value = get_string(buffer, start, field_len, 1)
   return(as.numeric(value))
 }
 
 
 float_extractor <- function(start, field_len, buffer) {
   if(buffer[start+5] == 1) return(NA)
-  return(packBits(rawToBits(buffer[(start+1):(start+4)]), "double")) # PROBABLY NOT CORRECT
+  int <- as.integer(rawToBits(buffer[(start+1):(start+4)]))
+  s <- (-1) ^ int[32]
+  if(sum(int[31:1]) == 0) return(0.0)
+  if(sum(int[31:24]) == 8 & sum(int[23:1]) == 0) return(s * Inf)
+  if(sum(int[31:24]) == 8 & sum(int[23:1]) > 0) return(NaN)
+  ex <- sum(int[31:24] * 2 ^ (7:0)) - 127
+  man <- sum(int[23:1] * 2 ^ (-1:-23)) + 1
+  return(s*(2^ex)*man)
 }
 
 
@@ -79,7 +94,7 @@ wstring_extractor <- function(start, field_len, buffer) {
 v_string_extractor <- function(start, field_len, buffer) {
   blob <- parse_blob(buffer, start)
   if(is.null(blob)) return(NA)
-  return(rawToChar(blob)) # NEED TO CREATE FUNCTION TO CONVERT TO UTF-8
+  return(rawToChar(blob))
 }
 
 
@@ -87,7 +102,7 @@ v_wstring_extractor <- function(start, field_len, buffer) {
   blob <- parse_blob(buffer, start)
   if(is.null(blob)) return(NA)
   blob <- blob[seq(1, length(blob), 2)]
-  return(rawToChar(blob)) # NEED TO CREATE FUNCTION TO CONVERT TO UTF-16
+  return(rawToChar(blob))
 }
 
 
@@ -126,7 +141,6 @@ get_end_of_string_pos <- function(buffer, start, field_len, char_size) {
 
 
 parse_blob <- function(buffer, start) {
-  # fixed_portion <- packBits(rawToBits(buffer[(start+1):(start+4)]), 'integer')
   fixed_portion_raw <- rawToBits(buffer[(start+1):(start+4)])
   fixed_portion <- sum(as.integer(fixed_portion_raw) * unsigned_int)
   if(fixed_portion == 0) return(raw(0))
@@ -134,10 +148,6 @@ parse_blob <- function(buffer, start) {
 
   if(is_tiny(fixed_portion_raw)) return(get_tiny_blob(start, buffer))
 
-  # block_start <- start + readBin(
-  #   packBits(intToBits(fixed_portion)) & packBits(intToBits(0x7fffffff)),
-  #   integer()
-  # )
   block_start <- start + sum(as.integer(fixed_portion_raw & Ox7fffffff) * unsigned_int)
 
   block_first_byte <- buffer[block_start+1]
@@ -150,9 +160,6 @@ parse_blob <- function(buffer, start) {
 
 
 is_tiny <- function(fixed_portion) {
-  # lhs <- bin_and(fixed_portion, 0x80000000)
-  #
-  # rhs <- bin_and(fixed_portion, 0x30000000)
   lhs <- sum(as.integer(fixed_portion & Ox80000000) * unsigned_int)
   rhs <- sum(as.integer(fixed_portion & Ox30000000) * unsigned_int)
 
@@ -161,7 +168,6 @@ is_tiny <- function(fixed_portion) {
 
 
 get_tiny_blob <- function(start, buffer) {
-  # value <- packBits(rawToBits(buffer[(start+1):(start+4)]), 'integer')
   value <- sum(as.integer(rawToBits(buffer[(start+1):(start+4)])) * unsigned_int)
   length <- floor(value / (2^28))
 
@@ -171,7 +177,6 @@ get_tiny_blob <- function(start, buffer) {
 
 
 is_small_block <- function(value) {
-  # test <- bin_and(value, 1)
   test <- sum(as.integer(intToBits(value) & intToBits(1)) * unsigned_int)
   return(test == 1)
 }
@@ -187,7 +192,6 @@ get_small_blob <- function(buffer, block_start) {
 
 
 get_normal_blob <- function(buffer, block_start) {
-  # blob_len <- packBits(rawToBits(buffer[(block_start+1):(block_start+4)]), 'integer') / 2
   blob_len <- sum(as.integer(rawToBits(buffer[(block_start+1):(block_start+4)])) * unsigned_int) / 2
   blob_start <- block_start + 4
   blob_end <- blob_start + blob_len
