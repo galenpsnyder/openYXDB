@@ -2,6 +2,7 @@
 #'
 #' Reads data from a .yxdb connection into a dataframe.
 #' @param path Path to .yxdb file.
+#' @param verbosity Numeric; print message after this many observations are read.
 #' @returns A dataframe whose column types are determined by the .yxdb meta information.
 #' @export
 #' @examples

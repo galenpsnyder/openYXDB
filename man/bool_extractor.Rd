@@ -9,3 +9,10 @@ bool_extractor(start, field_len, buffer)
 \description{
 Internal functions to convert raw data to various data types.
 }
+\details{
+R has native support for bool, byte, int32, double, character, and date only.
+However, .yxdb files may contain a variety of additional field types. These
+extractor functions are a brute force solution to coerce non-native data
+types to something usable by R. In some cases (e.g., int64), data conversion
+will occur by necessity.
+}
