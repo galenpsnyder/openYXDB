@@ -1,5 +1,7 @@
 # openYXDB
-Read .yxdb files.
+Read data from .yxdb files into R.
+
+openYXDB is an R implementation of yxdb-py.
 
 ## Usage
 Generally, you should only use `read_yxdb`. This connects to a .yxdb file and returns an appropriately formatted dataframe.
