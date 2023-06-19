@@ -9,6 +9,8 @@
 #' read_yxdb()
 
 read_yxdb <- function(path, verbosity = 0) {
+  if(!grepl(".yxdb$", path)) stop("`path` must point to a .yxdb file!")
+  
   yxdb <- get_header_and_field_info(path)
 
   d_mat <- matrix(
